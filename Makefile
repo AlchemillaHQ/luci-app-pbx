@@ -8,12 +8,11 @@ include $(TOPDIR)/rules.mk
 
 LUCI_TITLE:=LuCI PBX Administration
 LUCI_DEPENDS:= +asterisk +asterisk-app-authenticate +asterisk-app-disa \
-        +asterisk-app-system \
 	+asterisk-codec-a-mu +asterisk-codec-alaw +asterisk-func-cut \
 	+asterisk-res-clioriginate +asterisk-func-channel \
 	+asterisk-app-record +asterisk-app-senddtmf +asterisk-cdr \
-        +asterisk-chan-sip +asterisk-res-rtp-asterisk +asterisk-pjsip \
-	+asterisk-bridge-simple
+    +asterisk-chan-sip +asterisk-res-rtp-asterisk +asterisk-pjsip \
+	+asterisk-bridge-simple +asterisk-app-system
 
 include ../../luci.mk
 

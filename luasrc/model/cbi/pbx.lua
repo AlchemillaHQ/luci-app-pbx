@@ -1,32 +1,35 @@
 --[[
     Copyright 2011 Iordan Iordanov <iiordanov (AT) gmail.com>
+    Copyright 2022 Alchemilla Private Limited <hayzam@alchemilla.io>
 
-    This file is part of luci-pbx.
+    This file is part of luci-app-pbx.
 
-    luci-pbx is free software: you can redistribute it and/or modify
+    luci-app-pbx is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    luci-pbx is distributed in the hope that it will be useful,
+    luci-app-pbx is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with luci-pbx.  If not, see <http://www.gnu.org/licenses/>.
+    along with luci-app-pbx.  If not, see <http://www.gnu.org/licenses/>.
 ]]--
+local fs  = require "nixio.fs"
+local sys = require "luci.sys"
+local uci = require "luci.model.uci".cursor()
+local table = require("table")
+local psstring = "ps axfw" --set command we use to get pid
 
 modulename = "pbx"
 
 if     nixio.fs.access("/etc/init.d/asterisk")   then
    server = "asterisk"
-elseif nixio.fs.access("/etc/init.d/freeswitch") then
-   server = "freeswitch"
 else
    server = ""
 end
-
 
 -- Returns formatted output of string containing only the words at the indices
 -- specified in the table "indices".
@@ -67,46 +70,50 @@ function format_indices(string, indices)
 end
 
 
-m = Map (modulename, translate("PBX Main Page"),
-      translate("This configuration page allows you to configure a phone system (PBX) service which \
-      permits making phone calls through multiple SIP (like Sipgate, \
-      SipSorcery, and Betamax) accounts and sharing them among many SIP devices. \
-      Note that SIP accounts, and local user accounts are configured in the \
-      \"SIP Accounts\", and \"User Accounts\" sub-sections. \
-      You must add at least one User Account to this PBX, and then configure a SIP device or \
-      softphone to use the account, in order to make and receive calls with your SIP \
-      accounts. Configuring multiple users will allow you to make free calls between all users, \
-      and share the configured SIP accounts. If you have more than one SIP \
-      accounts set up, you should probably configure how calls to and from them are routed in \
-      the \"Call Routing\" page. If you're interested in using your own PBX from anywhere in the \
-      world, then visit the \"Remote Usage\" section in the \"Advanced Settings\" page."))
+m = Map (modulename, translate("Overview"), "This page provides an overview of the telephony services. ")
 
 -----------------------------------------------------------------------------------------
-s = m:section(NamedSection, "connection_status", "main",
-              translate("PBX Service Status"))
-s.anonymous = true
+overviewSection = m:section(SimpleSection, "Service Status", "All the service statuses for telephony services are shown below.")
 
-s:option (DummyValue, "status", translate("Service Status"))
+local astVerion = overviewSection:option(DummyValue, "astVersion", "Asterisk Version")
+astVerion.template = "cbi/value"
+astVerion.value = luci.util.trim(luci.sys.exec("asterisk -V | grep 'Asterisk' | cut -d' ' -f2"))
+astVerion.readonly = true
 
-sts = s:option(DummyValue, "_sts") 
-sts.template = "cbi/tvalue"
-sts.rows = 20
+local astServiceStatus = overviewSection:option(DummyValue, "astServiceStatus", "Asterisk Service Status")
+astServiceStatus.template = "cbi/value"
+astServiceStatus.readonly = true
 
-function sts.cfgvalue(self, section)
+local serviceStatus = luci.util.exec("service asterisk status")
 
-   if server == "asterisk" then
-      regs = luci.sys.exec("asterisk -rx 'sip show registry' | sed 's/peer-//'")
-      usrs = luci.sys.exec("asterisk -rx 'sip show users'")
-      chan = luci.sys.exec("asterisk -rx 'core show channels'")
-
-      return format_indices(regs, {1, 5}) ..
-             format_indices(usrs, {1}   ) .. "\n" .. chan
-
-   elseif server == "freeswitch" then
-      return "Freeswitch is not supported yet.\n"
-   else
-      return "Neither Asterisk nor FreeSwitch discovered, please install Asterisk, as Freeswitch is not supported yet.\n"
-   end
+if string.find(serviceStatus, "running") then
+   astServiceStatus.value = "✔️ Running"
+else
+   astServiceStatus.value = "❌ Not Running"
 end
+
+local astUptime = overviewSection:option(DummyValue, "astUptime", "Asterisk Uptime")
+astUptime.template = "cbi/value"
+astUptime.readonly = true
+astUptime.value = luci.util.exec("asterisk -rx 'core show uptime' | grep 'System uptime' | awk '{print $3, $4, $5, $6, $7, $8}'")
+
+local astRegistered = overviewSection:option(DummyValue, "astRegistered", "Registered SIP Trunks")
+astRegistered.template = "cbi/value"
+astRegistered.readonly = true
+astRegistered.value = luci.util.exec("asterisk -rx 'sip show registry' | grep 'Registry' | wc -l")
+
+local astActiveCalls = overviewSection:option(DummyValue, "astActiveCalls", "Active Calls")
+astActiveCalls.template = "cbi/value"
+astActiveCalls.readonly = true
+astActiveCalls.value = luci.util.exec("asterisk -rx 'core show channels' | grep 'active call' | awk '{print $1}'")
+
+local astExtensions = overviewSection:option(DummyValue, "astExtensions", "Extensions")
+astExtensions.template = "cbi/value"
+astExtensions.readonly = true
+
+local tVal = luci.util.exec("asterisk -rx 'sip show peers' | grep '\/' | wc -l")
+tVal = tVal - 1
+
+astExtensions.value = tVal
 
 return m
